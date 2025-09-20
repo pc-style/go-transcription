@@ -2,115 +2,150 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
-	"io"
-	"mime"
+	"log"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
+	"sync"
+	"time"
 
 	"github.com/deepgram-devs/deepgram-go-sdk/deepgram"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
 )
 
-type TranscriptionResponse struct {
-	Model            string                                   `json:"model,omitempty"`
-	Version          string                                   `json:"version,omitempty"`
-	Tier             string                                   `json:"tier,omitempty"`
-	DeepgramFeatures deepgram.PreRecordedTranscriptionOptions `json:"dgFeatures,omitempty"`
-	Transcription    deepgram.PreRecordedResponse             `json:"transcription,omitempty"`
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024 * 8,
+	WriteBufferSize: 1024 * 8,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+type wsWriter struct {
+	mu   sync.Mutex
+	conn *websocket.Conn
+}
+
+func (w *wsWriter) write(messageType int, payload []byte) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.conn.WriteMessage(messageType, payload)
 }
 
 func main() {
-	godotenv.Load()
-	dg := deepgram.NewClient(os.Getenv("deepgram_api_key"))
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file found, relying on environment variables")
+	}
+
+	apiKey := os.Getenv("deepgram_api_key")
+	if apiKey == "" {
+		log.Fatal("deepgram_api_key is required")
+	}
+
+	port := os.Getenv("port")
+	if port == "" {
+		port = "8080"
+	}
+
+	dg := deepgram.NewClient(apiKey)
 
 	r := gin.Default()
 	r.Use(cors.Default())
 	r.Static("/", "./static")
+	r.GET("/ws", liveTranscribe(dg))
 
-	r.POST("/api", transcribe(dg))
-
-	r.Run("localhost:" + os.Getenv("port"))
+	log.Printf("starting server on :%s", port)
+	if err := r.Run(":" + port); err != nil {
+		log.Fatalf("server error: %v", err)
+	}
 }
 
-func transcribe(dg *deepgram.Client) gin.HandlerFunc {
-
-	fn := func(c *gin.Context) {
-		url := c.PostForm("url")
-		model := c.PostForm("model")
-		version := c.PostForm("version")
-		tier := c.PostForm("tier")
-		features := c.PostForm("features")
-
-		var dgFeatures deepgram.PreRecordedTranscriptionOptions
-		err := json.Unmarshal([]byte(features), &dgFeatures)
+func liveTranscribe(dg *deepgram.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
+			log.Printf("websocket upgrade failed: %v", err)
+			return
+		}
+		defer conn.Close()
+
+		options := deepgram.LiveTranscriptionOptions{
+			Model:           "nova-2",
+			Language:        "en-US",
+			Punctuate:       true,
+			Smart_format:    true,
+			Interim_results: true,
+			Encoding:        "opus",
+			Channels:        1,
+			Sample_rate:     48000,
 		}
 
-		dgFeatures.Model = model
-		if len(version) > 0 {
-			dgFeatures.Version = version
+		dgConn, _, err := dg.LiveTranscription(options)
+		if err != nil {
+			log.Printf("unable to connect to deepgram: %v", err)
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"Unable to connect to Deepgram"}`))
+			return
 		}
+		defer dgConn.Close()
 
-		if model != "whisper" {
-			dgFeatures.Tier = tier
-		}
+		writer := &wsWriter{conn: conn}
+		done := make(chan struct{})
 
-		if strings.HasPrefix(url, "https://res.cloudinary.com/deepgram") {
-			transcription, err := dg.PreRecordedFromURL(deepgram.UrlSource{Url: url}, dgFeatures)
+		go func() {
+			defer close(done)
+			for {
+				messageType, message, err := dgConn.ReadMessage()
+				if err != nil {
+					log.Printf("error reading from deepgram: %v", err)
+					return
+				}
+				if len(message) == 0 {
+					continue
+				}
+				if err := writer.write(messageType, message); err != nil {
+					log.Printf("error writing to websocket client: %v", err)
+					return
+				}
+			}
+		}()
+
+		for {
+			messageType, message, err := conn.ReadMessage()
 			if err != nil {
-				panic(err)
+				log.Printf("client connection closed: %v", err)
+				break
 			}
 
-			res := TranscriptionResponse{
-				Model:            model,
-				Version:          version,
-				Tier:             tier,
-				DeepgramFeatures: dgFeatures,
-				Transcription:    transcription,
-			}
-
-			c.JSON(http.StatusOK, res)
-		} else {
-			file, err := c.FormFile("file")
-			if err != nil {
-				c.AbortWithError(http.StatusBadRequest, errors.New("you need to choose a file to transcribe your own audio"))
+			switch messageType {
+			case websocket.CloseMessage:
 				return
+			case websocket.TextMessage:
+				var payload map[string]string
+				if err := json.Unmarshal(message, &payload); err != nil {
+					continue
+				}
+				if payload["event"] == "stop" {
+					break
+				}
+			case websocket.BinaryMessage:
+				if len(message) == 0 {
+					continue
+				}
+				if err := dgConn.WriteMessage(websocket.BinaryMessage, message); err != nil {
+					log.Printf("error forwarding audio to deepgram: %v", err)
+					return
+				}
 			}
+		}
 
-			uploadedFile, err := file.Open()
-			if err != nil {
-				c.AbortWithError(http.StatusBadRequest, errors.New("cannot open file"))
-			}
-			defer uploadedFile.Close()
+		_ = dgConn.WriteMessage(websocket.TextMessage, []byte(`{"type":"CloseStream"}`))
+		_ = dgConn.Close()
 
-			stream := uploadedFile.(io.ReadCloser)
-			mime := mime.TypeByExtension(filepath.Ext(file.Filename))
-
-			transcription, err := dg.PreRecordedFromStream(
-				deepgram.ReadStreamSource{Stream: stream, Mimetype: mime},
-				dgFeatures)
-			if err != nil {
-				c.AbortWithError(http.StatusInternalServerError, err)
-			}
-
-			res := TranscriptionResponse{
-				Model:            model,
-				Version:          version,
-				Tier:             tier,
-				DeepgramFeatures: dgFeatures,
-				Transcription:    *transcription,
-			}
-
-			c.JSON(http.StatusOK, res)
-
+		select {
+		case <-done:
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
-
-	return gin.HandlerFunc(fn)
 }

@@ -1,11 +1,522 @@
-html {
-  color: white;
-  background: linear-gradient(3.95deg, #101014 3.44%, rgba(0, 0, 0, 0) 174.43%),
-    linear-gradient(270deg, #27336a 24.96%, #0c0310 50.78%, #370c4d 76.47%);
+:root {
+  color-scheme: dark;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background-color: #070b12;
+  color: #f4f6fb;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(120% 120% at 15% 10%, #1c2434 0%, rgba(28, 36, 52, 0) 65%),
+    radial-gradient(100% 100% at 85% 0%, #142035 0%, rgba(20, 32, 53, 0) 60%),
+    #060910;
+  color: inherit;
+}
+
+meeting-transcriber {
+  display: block;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding-bottom: 3rem;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.75rem 2.5rem;
+  background: rgba(13, 18, 27, 0.8);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.brand-mark {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.06rem;
+}
+
+.brand-tag {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(244, 246, 251, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.2rem;
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.top-nav a {
+  color: rgba(244, 246, 251, 0.65);
+  font-weight: 500;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.top-nav a.active,
+.top-nav a:hover {
+  color: #ffffff;
+}
+
+.new-session {
+  padding: 0.65rem 1.5rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, #2d68ff 0%, #4db2ff 100%);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.new-session:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(77, 178, 255, 0.28);
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  gap: 2rem;
+  width: min(1200px, 92vw);
+  margin: 0 auto;
+}
+
+.panel {
+  background: rgba(17, 23, 33, 0.9);
+  border-radius: 1.5rem;
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 30px 60px rgba(5, 8, 14, 0.55);
+}
+
+.transcription {
+  flex: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.summary {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  background: rgba(13, 18, 28, 0.85);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
+.panel-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.panel-header p {
+  margin: 0.75rem 0 0;
+  color: rgba(244, 246, 251, 0.7);
+  line-height: 1.6;
+  max-width: 40rem;
+}
+
+.live-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(244, 246, 251, 0.8);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08rem;
+  font-size: 0.8rem;
+}
+
+.live-status.recording {
+  background: rgba(255, 80, 80, 0.16);
+  color: #ffb6b6;
+}
+
+.status-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: rgba(244, 246, 251, 0.6);
+  box-shadow: 0 0 0 0 rgba(255, 76, 76, 0.6);
+  animation: pulse 2.4s infinite;
+}
+
+.live-status.recording .status-dot {
+  background: #ff5252;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 76, 76, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(255, 76, 76, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 76, 76, 0);
+  }
+}
+
+.duration {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: rgba(244, 246, 251, 0.9);
+}
+
+.meeting-meta {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.meeting-meta label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  flex: 1;
+  font-size: 0.9rem;
+  color: rgba(244, 246, 251, 0.7);
+}
+
+.meeting-meta input {
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 22, 0.65);
+  color: #f4f6fb;
+  font-size: 1rem;
+  transition: border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.meeting-meta input:focus {
+  outline: none;
+  border-color: rgba(77, 178, 255, 0.65);
+  box-shadow: 0 0 0 4px rgba(77, 178, 255, 0.15);
+}
+
+.status-message {
+  min-width: 200px;
+  text-align: right;
+  font-weight: 600;
+  color: rgba(244, 246, 251, 0.65);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.control-group .label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(244, 246, 251, 0.7);
+}
+
+.source-options {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.source-button {
+  padding: 0.7rem 1.4rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 22, 0.6);
+  color: rgba(244, 246, 251, 0.85);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.source-button:hover {
+  border-color: rgba(77, 178, 255, 0.5);
+  box-shadow: 0 10px 20px rgba(11, 16, 24, 0.45);
+}
+
+.source-button.active {
+  background: linear-gradient(140deg, rgba(77, 178, 255, 0.2), rgba(59, 132, 255, 0.28));
+  border-color: rgba(77, 178, 255, 0.85);
+  color: #ffffff;
+  box-shadow: 0 14px 35px rgba(77, 178, 255, 0.3);
+}
+
+.action-buttons button {
+  padding: 0.85rem 2.8rem;
+  border-radius: 1rem;
+  border: none;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.action-buttons .start {
+  background: linear-gradient(135deg, #3effb1 0%, #37d2ff 100%);
+  color: #061019;
+  box-shadow: 0 18px 40px rgba(55, 210, 255, 0.35);
+}
+
+.action-buttons .start:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 48px rgba(55, 210, 255, 0.45);
+}
+
+.action-buttons .stop {
+  background: rgba(255, 82, 82, 0.12);
+  color: #ff9f9f;
+  border: 1px solid rgba(255, 105, 105, 0.5);
+  box-shadow: 0 18px 36px rgba(255, 82, 82, 0.25);
+}
+
+.action-buttons .stop:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 44px rgba(255, 82, 82, 0.35);
+}
+
+.transcript-window {
+  background: rgba(8, 12, 20, 0.75);
+  border-radius: 1.25rem;
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  height: 28rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.transcript-window::-webkit-scrollbar {
+  width: 0.6rem;
+}
+
+.transcript-window::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+}
+
+.empty-state {
+  text-align: center;
+  margin: auto;
+  max-width: 28rem;
+  color: rgba(244, 246, 251, 0.7);
+}
+
+.empty-state h3 {
+  font-size: 1.3rem;
+  margin-bottom: 0.75rem;
+  color: #f4f6fb;
+}
+
+.utterance {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+  background: rgba(18, 24, 34, 0.75);
+  border: 1px solid transparent;
+  transition: border 0.2s ease, transform 0.2s ease;
+}
+
+.utterance:hover {
+  border-color: rgba(77, 178, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.utterance.live {
+  border-color: rgba(77, 178, 255, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(77, 178, 255, 0.3);
+}
+
+.utterance-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(244, 246, 251, 0.8);
+}
+
+.utterance p {
+  margin: 0;
+  color: rgba(244, 246, 251, 0.9);
+  line-height: 1.6;
+}
+
+.summary h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.insight-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08rem;
+  color: rgba(244, 246, 251, 0.6);
+}
+
+.section-heading span {
+  font-size: 0.85rem;
+  color: rgba(244, 246, 251, 0.45);
+}
+
+.insight-section ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.insight-section li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  line-height: 1.5;
+  color: rgba(244, 246, 251, 0.85);
+}
+
+.insight-section .bullet {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  margin-top: 0.45rem;
+  background: linear-gradient(135deg, #4db2ff 0%, #3effb1 100%);
+  flex-shrink: 0;
+}
+
+.insight-placeholder {
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(244, 246, 251, 0.6);
+  line-height: 1.6;
+}
+
+.notes-section {
+  padding: 1.2rem;
+  border-radius: 1.1rem;
+  background: rgba(9, 13, 21, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: rgba(244, 246, 251, 0.8);
+  line-height: 1.6;
+}
+
+.notes-section h3 {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: rgba(244, 246, 251, 0.9);
+}
+
+.notes-section p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+}
+
+@media (max-width: 1080px) {
+  .main-content {
+    flex-direction: column;
+  }
+
+  .summary {
+    order: -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .top-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .top-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .main-content {
+    width: 90vw;
+  }
+
+  .meeting-meta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .status-message {
+    text-align: left;
+  }
+
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .source-options {
+    flex-wrap: wrap;
+  }
+
+  .action-buttons button {
+    width: 100%;
+  }
 }
