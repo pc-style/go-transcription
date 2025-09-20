@@ -53,7 +53,12 @@ func main() {
 
 	r := gin.Default()
 	r.Use(cors.Default())
-	r.Static("/", "./static")
+
+	r.Static("/static", "./static")
+	r.GET("/", func(c *gin.Context) {
+		c.File("./static/index.html")
+	})
+	r.StaticFile("/favicon.ico", "./static/favicon.ico")
 	r.GET("/ws", liveTranscribe(dg))
 
 	log.Printf("starting server on :%s", port)
