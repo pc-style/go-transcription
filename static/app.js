@@ -1,14 +1,10 @@
 import { html, LitElement } from "//cdn.skypack.dev/lit@v2.8.0";
 
-import "./components/app-header.js";
-import "./components/app-body.js";
+import "./components/meeting-transcriber.js";
 
 class App extends LitElement {
   render() {
-    return html`
-      <app-header></app-header>
-      <app-body></app-body>
-    `;
+    return html`<meeting-transcriber></meeting-transcriber>`;
   }
 }
 

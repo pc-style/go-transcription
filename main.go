@@ -1,116 +1,167 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
-	"io"
-	"mime"
+	"log"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
+	"strconv"
+	"sync"
 
 	"github.com/deepgram-devs/deepgram-go-sdk/deepgram"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
 )
 
-type TranscriptionResponse struct {
-	Model            string                                   `json:"model,omitempty"`
-	Version          string                                   `json:"version,omitempty"`
-	Tier             string                                   `json:"tier,omitempty"`
-	DeepgramFeatures deepgram.PreRecordedTranscriptionOptions `json:"dgFeatures,omitempty"`
-	Transcription    deepgram.PreRecordedResponse             `json:"transcription,omitempty"`
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024 * 8,
+	WriteBufferSize: 1024 * 8,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
 }
 
 func main() {
 	godotenv.Load()
-	dg := deepgram.NewClient(os.Getenv("deepgram_api_key"))
 
-	r := gin.Default()
-	r.Use(cors.Default())
-	r.Static("/", "./static")
-
-	r.POST("/api", transcribe(dg))
-
-	r.Run("localhost:" + os.Getenv("port"))
-}
-
-func transcribe(dg *deepgram.Client) gin.HandlerFunc {
-
-	fn := func(c *gin.Context) {
-		url := c.PostForm("url")
-		model := c.PostForm("model")
-		version := c.PostForm("version")
-		tier := c.PostForm("tier")
-		features := c.PostForm("features")
-
-		var dgFeatures deepgram.PreRecordedTranscriptionOptions
-		err := json.Unmarshal([]byte(features), &dgFeatures)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-		}
-
-		dgFeatures.Model = model
-		if len(version) > 0 {
-			dgFeatures.Version = version
-		}
-
-		if model != "whisper" {
-			dgFeatures.Tier = tier
-		}
-
-		if strings.HasPrefix(url, "https://res.cloudinary.com/deepgram") {
-			transcription, err := dg.PreRecordedFromURL(deepgram.UrlSource{Url: url}, dgFeatures)
-			if err != nil {
-				panic(err)
-			}
-
-			res := TranscriptionResponse{
-				Model:            model,
-				Version:          version,
-				Tier:             tier,
-				DeepgramFeatures: dgFeatures,
-				Transcription:    transcription,
-			}
-
-			c.JSON(http.StatusOK, res)
-		} else {
-			file, err := c.FormFile("file")
-			if err != nil {
-				c.AbortWithError(http.StatusBadRequest, errors.New("you need to choose a file to transcribe your own audio"))
-				return
-			}
-
-			uploadedFile, err := file.Open()
-			if err != nil {
-				c.AbortWithError(http.StatusBadRequest, errors.New("cannot open file"))
-			}
-			defer uploadedFile.Close()
-
-			stream := uploadedFile.(io.ReadCloser)
-			mime := mime.TypeByExtension(filepath.Ext(file.Filename))
-
-			transcription, err := dg.PreRecordedFromStream(
-				deepgram.ReadStreamSource{Stream: stream, Mimetype: mime},
-				dgFeatures)
-			if err != nil {
-				c.AbortWithError(http.StatusInternalServerError, err)
-			}
-
-			res := TranscriptionResponse{
-				Model:            model,
-				Version:          version,
-				Tier:             tier,
-				DeepgramFeatures: dgFeatures,
-				Transcription:    *transcription,
-			}
-
-			c.JSON(http.StatusOK, res)
-
-		}
+	apiKey := os.Getenv("deepgram_api_key")
+	if apiKey == "" {
+		log.Fatal("deepgram_api_key environment variable must be set")
 	}
 
-	return gin.HandlerFunc(fn)
+	dg := deepgram.NewClient(apiKey)
+
+	port := os.Getenv("port")
+	if port == "" {
+		port = "8080"
+	}
+
+	router := gin.Default()
+	router.Use(cors.Default())
+	router.Static("/", "./static")
+
+	router.GET("/live", liveTranscriptionHandler(dg))
+
+	if err := router.Run(":" + port); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func liveTranscriptionHandler(dg *deepgram.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			log.Printf("websocket upgrade failed: %v", err)
+			return
+		}
+		clientConn.EnableWriteCompression(true)
+
+		options := deepgram.LiveTranscriptionOptions{
+			Language:        c.DefaultQuery("language", "en-US"),
+			Encoding:        c.DefaultQuery("encoding", "opus"),
+			Sample_rate:     queryInt(c, "sample_rate", 48000),
+			Punctuate:       queryBool(c, "punctuate", true),
+			Smart_format:    queryBool(c, "smart_format", true),
+			Interim_results: queryBool(c, "interim_results", true),
+		}
+
+		if model := c.Query("model"); model != "" {
+			options.Model = model
+		}
+		if tier := c.Query("tier"); tier != "" {
+			options.Tier = tier
+		}
+		if queryBool(c, "diarize", true) {
+			options.Diarize = true
+		}
+
+		deepgramConn, _, err := dg.LiveTranscription(options)
+		if err != nil {
+			log.Printf("unable to connect to Deepgram: %v", err)
+			clientConn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Unable to reach Deepgram"}`))
+			clientConn.Close()
+			return
+		}
+
+		if err := clientConn.WriteJSON(gin.H{"type": "connected"}); err != nil {
+			log.Printf("failed to notify client of connection: %v", err)
+		}
+
+		var closeOnce sync.Once
+		closeAll := func() {
+			closeOnce.Do(func() {
+				deepgramConn.Close()
+				clientConn.Close()
+			})
+		}
+
+		errors := make(chan error, 2)
+
+		go func() {
+			for {
+				messageType, payload, err := clientConn.ReadMessage()
+				if err != nil {
+					errors <- err
+					return
+				}
+
+				if err := deepgramConn.WriteMessage(messageType, payload); err != nil {
+					errors <- err
+					return
+				}
+			}
+		}()
+
+		go func() {
+			for {
+				messageType, payload, err := deepgramConn.ReadMessage()
+				if err != nil {
+					errors <- err
+					return
+				}
+
+				if err := clientConn.WriteMessage(messageType, payload); err != nil {
+					errors <- err
+					return
+				}
+			}
+		}()
+
+		if err := <-errors; err != nil {
+			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				log.Printf("live transcription closed with error: %v", err)
+			}
+		}
+
+		closeAll()
+	}
+}
+
+func queryBool(c *gin.Context, key string, defaultValue bool) bool {
+	value := c.Query(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return defaultValue
+	}
+
+	return parsed
+}
+
+func queryInt(c *gin.Context, key string, defaultValue int) int {
+	value := c.Query(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+
+	return parsed
 }

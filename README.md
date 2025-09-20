@@ -1,69 +1,58 @@
-# Go Transcription Starter
+# Real-time Meeting Transcriber
 
-[![Discord](https://dcbadge.vercel.app/api/server/xWRaCDBtW4?style=flat)](https://discord.gg/xWRaCDBtW4)
+This project is a real-time meeting assistant built with Go, Lit web components, and [Deepgram](https://deepgram.com/)'s live transcription API. It streams microphone or system audio to Deepgram, displays the transcript as it happens, and surfaces key takeaways plus actionable follow-ups for your meetings.
 
-This sample demonstrates interacting with the Deepgram API from Go. It uses the Deepgram Go SDK, with a javascript client built from web components.
+## Features
 
-## What is Deepgram?
+- 🔊 **Live audio streaming** from either the microphone or system audio (via screen/tab capture).
+- 📝 **Real-time transcript feed** that updates as people speak and keeps interim hypotheses separate from confirmed text.
+- ✨ **Automatic highlights** that extract key points and action items from the running transcript so you never miss important details.
+- 🎨 **Modern meeting dashboard** inspired by the provided design reference, including a summary sidebar with meeting notes.
 
-[Deepgram’s](https://deepgram.com/) voice AI platform provides APIs for speech-to-text, text-to-speech, and full speech-to-speech voice agents. Over 200,000+ developers use Deepgram to build voice AI products and features.
+## Prerequisites
 
-## Sign-up to Deepgram
+- Go 1.20 or newer
+- A Deepgram API key with access to the `listen` (live transcription) scope
+- A modern browser with [`MediaRecorder`](https://developer.mozilla.org/docs/Web/API/MediaRecorder) support
 
-Before you start, it's essential to generate a Deepgram API key to use in this project. [Sign-up now for Deepgram and create an API key](https://console.deepgram.com/signup?jump=keys).
+## Getting started
 
-## Quickstart
+1. Install dependencies (the Go modules are fetched automatically on first build):
 
-### Manual
+   ```bash
+   go mod tidy
+   ```
 
-Follow these steps to get started with this starter application.
+2. Create an `.env` file with your Deepgram credentials and desired port (8080 is the default):
 
-#### Clone the repository
+   ```ini
+   port=8080
+   deepgram_api_key=YOUR_DEEPGRAM_API_KEY
+   ```
 
-Go to GitHub and [clone the repository](https://github.com/deepgram-starters/deepgram-go-starters).
+3. Run the server:
 
-#### Install dependencies
+   ```bash
+   go run .
+   ```
 
-Install the project dependencies in the `Starter 01` directory.
+4. Open [http://localhost:8080](http://localhost:8080) in your browser. Start a session by selecting an audio source and pressing **Start Recording**.
 
-```bash
-cd ./Starter-01
-go get
-```
+   - **Microphone** streams directly from your mic.
+   - **System Audio** prompts you to share a screen or tab so system audio can be captured (required by browser security rules). You can minimise the shared surface once capture begins.
 
-#### Edit the .env file
+## How it works
 
-Copy the code from `.env-sample` and create a new file called `.env`. Paste in the code and enter your API key you generated in the [Deepgram console](https://console.deepgram.com/).
+- The Go server exposes a WebSocket endpoint at `/live`. When the frontend connects, the server opens a corresponding WebSocket to Deepgram using the official SDK and proxies audio + transcription events between the two connections.
+- The UI uses the `MediaRecorder` API to chunk audio into Opus-encoded blobs, which are immediately streamed to the backend.
+- Final transcripts are aggregated into meeting notes. A simple extractive summary algorithm scores sentences to generate the "Key Points" list, while action-oriented language is used to populate "Action Items".
 
-```
-port=8080
-deepgram_api_key=YOUR_KEY
-```
+## Notes
 
-#### Run the application
-
-The `run` script will run a web and API server concurrently. Once running, you can [access the application in your browser](http://localhost:8080/).
-
-```bash
-go run .
-```
-
-## Issue Reporting
-
-If you have found a bug or if you have a feature request, please report them at this repository issues section. Please do not report security vulnerabilities on the public GitHub issue tracker. The [Security Policy](./SECURITY.md) details the procedure for contacting Deepgram.
-
-## Getting Help
-
-We love to hear from you so if you have questions, comments or find a bug in the project, let us know! You can either:
-
-- [Open an issue in this repository](https://github.com/deepgram-starters/go-prerecorded-transcription/issues/new)
-- [Join the Deepgram Github Discussions Community](https://github.com/orgs/deepgram/discussions)
-- [Join the Deepgram Discord Community](https://discord.gg/xWRaCDBtW4)
-
-## Author
-
-[Deepgram](https://deepgram.com)
+- The frontend runs entirely in the browser—no build tools required. The layout is implemented with [Lit](https://lit.dev/) and mirrors the dark dashboard aesthetic from the supplied inspiration.
+- Browsers typically require user interaction to start recording. Ensure you click **Start Recording** before speaking.
+- System audio capture is only available in Chromium-based browsers today, and may require selecting "Share tab audio" during the screen-share prompt.
 
 ## License
 
-This project is licensed under the MIT license. See the [LICENSE](./LICENSE) file for more info.
+This project is released under the [MIT License](./LICENSE).
